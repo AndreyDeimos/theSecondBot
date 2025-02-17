@@ -1,0 +1,10 @@
+new
+awaiting first name 
+confirming first name
+awaiting second name
+confirming second name
+smesharik
+watching competitions |awaiting competition name
+confirming            |awaiting gender
+                      |awaiting count 
+
