@@ -4,32 +4,83 @@ import db
 bot = None
 
 
+def get_user_state(user_id):
+    result = db.query_data("SELECT state FROM users WHERE user_id = ?", (user_id,))
+    return result[0][0] if result else None
+
+
 async def welcome(message):
     """Handle /start command"""
     if not user_exists(message.from_user.id):
         db.query_data(
-            "INSERT INTO users (user_id, role) VALUES (?, 'user')",
+            "INSERT INTO users (user_id, role, state) VALUES (?, 'user', 'name')",
             (message.from_user.id,),
         )
     await start_registration(message)
 
 
+def user_exists(user_id):
+    return db.query_data(
+        "SELECT COUNT(*) > 0 FROM users WHERE user_id = ?", (user_id,)
+    )[0][0]
+
+
 async def message_handler(message):
     """Entry point for all messages"""
-    if not user_exists(message.from_user.id):
+    user_id = message.from_user.id
+    if not user_exists(user_id):
         await welcome(message)
         return
 
-    # If user is in middle of registration, continue with last step
+    state = get_user_state(user_id)
+
+    if state == "name":
+        await process_name(message)
+    elif state == "surname":
+        await process_surname(message)
+    elif state == "gender":
+        await bot.send_message(
+            message.chat.id, "Пожалуйста, выберите пол используя кнопки выше."
+        )
+    elif state in ["confirm_name", "confirm_surname"]:
+        await bot.send_message(
+            message.chat.id,
+            "Пожалуйста, подтвердите текущий шаг используя кнопки выше.",
+        )
+    else:
+        await bot.send_message(
+            message.chat.id, "Введите /start для начала регистрации."
+        )
 
 
 async def callback_query_handler(call):
     """Handle inline keyboard interactions"""
     try:
+        user_id = call.from_user.id
         if call.data == "name confirmed":
+            db.query_data(
+                "UPDATE users SET state = 'surname' WHERE user_id = ?", (user_id,)
+            )
             await ask_surname(call)
         elif call.data == "name rejected":
+            db.query_data(
+                "UPDATE users SET state = 'name' WHERE user_id = ?", (user_id,)
+            )
             await handle_name_rejection(call)
+        elif call.data == "surname confirmed":
+            db.query_data(
+                "UPDATE users SET state = 'gender' WHERE user_id = ?", (user_id,)
+            )
+            await ask_gender(call)
+        elif call.data == "surname rejected":
+            db.query_data(
+                "UPDATE users SET state = 'surname' WHERE user_id = ?", (user_id,)
+            )
+            await handle_surname_rejection(call)
+        elif call.data == "male":
+            await handle_male(call)
+        elif call.data == "female":
+            await handle_female(call)
     finally:
         await bot.answer_callback_query(call.id)
 
@@ -44,14 +95,16 @@ async def start_registration(message):
 
 async def ask_name(message):
     """Request name"""
-    msg = await bot.send_message(message.chat.id, "Напиши своё имя:")
-    await bot.register_next_step_handler(msg, process_name)
+    db.query_data(
+        "UPDATE users SET state = 'name' WHERE user_id = ?", (message.from_user.id,)
+    )
+    await bot.send_message(message.chat.id, "Напиши своё имя:")
 
 
 async def process_name(message):
     """Handle name input"""
     db.query_data(
-        "UPDATE users SET first_name = ? WHERE user_id = ?",
+        "UPDATE users SET first_name = ?, state = 'confirm_name' WHERE user_id = ?",
         (message.text, message.from_user.id),
     )
     await confirm_name(message)
@@ -73,21 +126,20 @@ async def confirm_name(message):
 
 async def ask_surname(call):
     """Process confirmed name"""
-    msg = await bot.send_message(
+    await bot.send_message(
         call.message.chat.id, "Прекрасно! Теперь напиши свою фамилию:"
     )
-    await bot.register_next_step_handler(msg, process_surname)
 
 
 async def handle_name_rejection(call):
     """Restart name entry"""
-    await ask_name(call.message)
+    await bot.send_message(call.message.chat.id, "Пожалуйста, введите ваше имя снова:")
 
 
 async def process_surname(message):
     """Handle surname input"""
     db.query_data(
-        "UPDATE users SET second_name = ? WHERE user_id = ?",
+        "UPDATE users SET second_name = ?, state = 'confirm_surname' WHERE user_id = ?",
         (message.text, message.from_user.id),
     )
     await confirm_surname(message)
@@ -101,29 +153,47 @@ async def confirm_surname(message):
     )
     await bot.send_message(
         message.chat.id,
-        f"Вы уверены, что ваше имя {message.text}?",
+        f"Вы уверены, что ваша фамилия {message.text}?",
         reply_markup=markup,
     )
 
 
-async def handle_surname_confirmation(call):
-    """Process confirmed name"""
-    msg = await bot.send_message(
-        call.message.chat.id, "Прекрасно! Теперь выбери свой пол:"
-    )
+async def ask_gender(call):
+    """Ask for gender selection"""
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("М", callback_data="male"),
         InlineKeyboardButton("Ж", callback_data="female"),
     )
-    await bot.send_message(call.message.chat.id, "Выберите свой пол:", markup=markup)
+    await bot.send_message(
+        call.message.chat.id, "Выберите свой пол:", reply_markup=markup
+    )
 
 
 async def handle_surname_rejection(call):
-    """Restart name entry"""
-    await ask_surname(call.message)
+    """Restart surname entry"""
+    await bot.send_message(
+        call.message.chat.id, "Пожалуйста, введите вашу фамилию снова:"
+    )
 
 
-async def finish_registration(message):
-    """Finalize registration"""
-    await bot.send_message(message.chat.id, "Спасибо! Регистрация завершена.")
+async def handle_male(call):
+    db.query_data(
+        "UPDATE users SET gender = 'М', state = 'complete' WHERE user_id = ?",
+        (call.from_user.id,),
+    )
+    await bot.send_message(
+        call.message.chat.id,
+        "Регистрация завершена! Для просмотра доступных команд введите /start",
+    )
+
+
+async def handle_female(call):
+    db.query_data(
+        "UPDATE users SET gender = 'Ж', state = 'complete' WHERE user_id = ?",
+        (call.from_user.id,),
+    )
+    await bot.send_message(
+        call.message.chat.id,
+        "Регистрация завершена! Для просмотра доступных команд введите /start",
+    )
