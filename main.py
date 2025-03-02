@@ -8,10 +8,18 @@ bot = AsyncTeleBot(API_TOKEN)
 
 message_handlers.bot = bot
 
-bot.register_message_handler(message_handlers.welcome, commands=["/start", "/help"])
+# Register command handlers first
+bot.register_message_handler(message_handlers.welcome, commands=["start", "help"])
+bot.register_message_handler(
+    message_handlers.get_competitions, commands=["competitions"]
+)
+
+# Register the generic message handler last
 bot.register_message_handler(
     message_handlers.message_handler, func=lambda message: True
 )
+
+# Register callback query handler
 bot.register_callback_query_handler(
     message_handlers.callback_query_handler, lambda call: True
 )
