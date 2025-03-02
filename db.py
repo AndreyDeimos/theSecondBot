@@ -45,3 +45,19 @@ query_data("""
         user_id INTEGER
     )
 """)
+
+query_data("""
+    CREATE TABLE IF NOT EXISTS registrations (
+        user_id INTEGER, 
+        competition_id INTEGER
+    )
+""")
+
+query_data("""
+    CREATE TABLE IF NOT EXISTS logs (
+        user_id INTEGER, 
+        object_id INTEGER,
+        action_type TEXT,
+        date TEXT
+    )
+""")
