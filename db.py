@@ -42,20 +42,20 @@ query_data("""
         date TEXT,
         gender TEXT,
         required_participants INTEGER,
-        user_id INTEGER
+        chat_id INTEGER
     )
 """)
 
 query_data("""
     CREATE TABLE IF NOT EXISTS registrations (
-        user_id INTEGER, 
+        chat_id INTEGER, 
         competition_id INTEGER
     )
 """)
 
 query_data("""
     CREATE TABLE IF NOT EXISTS logs (
-        user_id INTEGER, 
+        chat_id INTEGER, 
         object_id INTEGER,
         action_type TEXT,
         date TEXT
