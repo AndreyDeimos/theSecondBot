@@ -8,14 +8,14 @@ bot = None
 
 
 def user_exists(chat_id):
-    print("count", db.query_data("SELECT COUNT(*) > 0 FROM users WHERE chat_id = ?", (chat_id,))[0][0])
-    if db.query_data("SELECT COUNT(*) > 0 FROM users WHERE chat_id = ?", (chat_id,))[0][0]:
+    print("count", db.query_data("select count(*) > 0 from users where chat_id = ?", (chat_id,))[0][0])
+    if db.query_data("select count(*) > 0 from users where chat_id = ?", (chat_id,))[0][0]:
         print("yes")
-    return db.query_data("SELECT COUNT(*) > 0 FROM users WHERE chat_id = ?", (chat_id,))[0][0]
+    return db.query_data("select count(*) > 0 from users where chat_id = ?", (chat_id,))[0][0]
 
 
 def get_user_state(chat_id):
-    result = db.query_data("SELECT state FROM users WHERE chat_id = ?", (chat_id,))
+    result = db.query_data("select state from users where chat_id = ?", (chat_id,))
     return result[0][0] if result else None
 
 
@@ -46,6 +46,8 @@ async def message_handler(message):
         await competition_chosen(message)
     elif state == "seeing competitions":
         await competition_seen(message)
+    elif state == "awaiting competition date":
+        process_competition_date(message)
     else:
         await help(message)
 
@@ -79,21 +81,25 @@ async def callback_query_handler(call):
     try:
         chat_id = call.from_user.id
         if call.data == "name confirmed":
-            db.query_data("UPDATE users SET state = 'surname' WHERE chat_id = ?", (chat_id,))
+            db.query_data("update users set state = 'surname' where chat_id = ?", (chat_id,))
             await ask_surname(call)
         elif call.data == "name rejected":
-            db.query_data("UPDATE users SET state = 'name' WHERE chat_id = ?", (chat_id,))
+            db.query_data("update users set state = 'name' where chat_id = ?", (chat_id,))
             await handle_name_rejection(call)
         elif call.data == "surname confirmed":
-            db.query_data("UPDATE users SET state = 'gender' WHERE chat_id = ?", (chat_id,))
+            db.query_data("update users set state = 'gender' where chat_id = ?", (chat_id,))
             await ask_gender(call)
         elif call.data == "surname rejected":
-            db.query_data("UPDATE users SET state = 'surname' WHERE chat_id = ?", (chat_id,))
+            db.query_data("update users set state = 'surname' where chat_id = ?", (chat_id,))
             await handle_surname_rejection(call)
         elif call.data == "male":
             await handle_male(call)
         elif call.data == "female":
             await handle_female(call)
+        elif call.data == "competition name confirmed":
+            await handle_competition_name_confirmed(call)
+        elif call.data == "competition name rejected":
+            await handle_competition_name_rejected(call)
     finally:
         await bot.answer_callback_query(call.id)
 
@@ -105,7 +111,7 @@ async def welcome(message):
     """Handle /start command"""
     if not user_exists(message.chat.id):
         db.query_data(
-            "INSERT INTO users (chat_id, role, state) VALUES (?, 'user', 'name')",
+            "insert into users (chat_id, role, state) values (?, 'user', 'name')",
             (message.chat.id,),
         )
     await start_registration(message)
@@ -119,14 +125,14 @@ async def start_registration(message):
 
 async def ask_name(message):
     """Request name"""
-    db.query_data("UPDATE users SET state = 'name' WHERE chat_id = ?", (message.chat.id,))
+    db.query_data("update users set state = 'name' where chat_id = ?", (message.chat.id,))
     await bot.send_message(message.chat.id, "Напиши своё имя:")
 
 
 async def process_name(message):
     """Handle name input"""
     db.query_data(
-        "UPDATE users SET first_name = ?, state = 'confirm_name' WHERE chat_id = ?",
+        "update users set first_name = ?, state = 'confirm_name' where chat_id = ?",
         (message.text, message.chat.id),
     )
     await confirm_name(message)
@@ -160,7 +166,7 @@ async def handle_name_rejection(call):
 async def process_surname(message):
     """Handle surname input"""
     db.query_data(
-        "UPDATE users SET second_name = ?, state = 'confirm_surname' WHERE chat_id = ?",
+        "update users set second_name = ?, state = 'confirm_surname' where chat_id = ?",
         (message.text, message.chat.id),
     )
     await confirm_surname(message)
@@ -196,7 +202,7 @@ async def handle_surname_rejection(call):
 
 async def handle_male(call):
     db.query_data(
-        "UPDATE users SET gender = 'М', state = 'complete' WHERE chat_id = ?",
+        "update users set gender = 'м', state = 'complete' where chat_id = ?",
         (call.from_user.id,),
     )
     await bot.send_message(
@@ -228,7 +234,7 @@ def format_competition(competition):
         dt = datetime.strptime(competition[2], "%Y-%m-%d %H:%M:%S")
 
     already_participating_result = db.query_data(
-        "SELECT COUNT(*) FROM registrations WHERE competition_id = ?", (competition[0],)
+        "select count(*) from registrations where competition_id = ?", (competition[0],)
     )
     already_participating = already_participating_result[0][0] if already_participating_result else 0
     return f"""
@@ -240,7 +246,7 @@ def format_competition(competition):
 
 
 async def get_competitions(message):
-    user_gender_result = db.query_data("SELECT gender FROM users WHERE chat_id = ?", (message.chat.id,))
+    user_gender_result = db.query_data("select gender from users where chat_id = ?", (message.chat.id,))
 
     if not user_gender_result:
         await bot.send_message(message.chat.id, "User not found.")
@@ -249,8 +255,8 @@ async def get_competitions(message):
     user_gender = user_gender_result[0][0]  # Assuming the result is a list of tuples
 
     competitions = db.query_data(
-        """SELECT * FROM competitions WHERE datetime(date) > datetime('now') 
-        AND gender = ?""",
+        """select * from competitions where datetime(date) > datetime('now') 
+        and gender = ?""",
         (user_gender,),
     )
 
@@ -266,7 +272,7 @@ async def get_competitions(message):
         await bot.send_message(message.chat.id, competition_message)
 
     db.query_data(
-        "UPDATE users SET state = 'choosing competition' WHERE chat_id = ?",
+        "update users set state = 'choosing competition' where chat_id = ?",
         (message.chat.id,),
     )
     markup = ReplyKeyboardMarkup()
@@ -281,16 +287,16 @@ async def get_competitions(message):
 
 async def my_competitions(message):
     competitions = db.query_data(
-        """SELECT * FROM competitions WHERE date > datetime('now') 
-        AND id IN 
-        (SELECT competition_id FROM registrations WHERE chat_id = ?);""",
+        """select * from competitions where date > datetime('now') 
+        and id in 
+        (select competition_id from registrations where chat_id = ?);""",
         (message.chat.id,),
     )
 
     if not competitions:
         await bot.send_message(message.chat.id, "Вы пока что не зарегестрированы ни на какие соревнования.")
 
-    db.query_data("UPDATE users SET state = 'seeing competitions' WHERE chat_id = ?", (message.chat.id,))
+    db.query_data("update users set state = 'seeing competitions' where chat_id = ?", (message.chat.id,))
 
     competition_ids = []
 
@@ -311,14 +317,14 @@ async def my_competitions(message):
 
 async def competition_chosen(message):
     if message.text == "Выйти":
-        db.query_data("UPDATE users SET state = 'complete' WHERE chat_id = ?", (message.chat.id,))
+        db.query_data("update users set state = 'complete' where chat_id = ?", (message.chat.id,))
         await bot.send_message(
             message.chat.id,
             "Вы вышли в главное меню",
             reply_markup=ReplyKeyboardRemove(),
         )
     else:
-        competition_ids = [i[0] for i in db.query_data("SELECT id FROM competitions")]
+        competition_ids = [i[0] for i in db.query_data("select id from competitions")]
         try:
             test = int(message.text)
         except BaseException:
@@ -328,7 +334,7 @@ async def competition_chosen(message):
             registered_comps = [
                 i[0]
                 for i in db.query_data(
-                    "SELECT competition_id FROM registrations WHERE chat_id = ?",
+                    "select competition_id from registrations where chat_id = ?",
                     (message.chat.id,),
                 )
             ]
@@ -336,11 +342,11 @@ async def competition_chosen(message):
                 await bot.send_message(message.chat.id, "Вы уже зарегистрированы на это соревнование.")
             else:
                 db.query_data(
-                    "INSERT INTO registrations(chat_id, competition_id) VALUES(?, ?)",
+                    "insert into registrations(chat_id, competition_id) values(?, ?)",
                     (message.chat.id, int(message.text)),
                 )
                 db.query_data(
-                    "INSERT INTO logs(chat_id, object_id, action_type, date) VALUES(?, ?, 'registered on to a competition', datetime('now'))",
+                    "insert into logs(chat_id, object_id, action_type, date) values(?, ?, 'registered on to a competition', datetime('now'))",
                     (message.chat.id, int(message.text)),
                 )
                 await bot.send_message(
@@ -353,14 +359,14 @@ async def competition_chosen(message):
 
 async def competition_seen(message):
     if message.text == "Выйти":
-        db.query_data("UPDATE users SET state = 'complete' WHERE chat_id = ?", (message.chat.id,))
+        db.query_data("update users set state = 'complete' where chat_id = ?", (message.chat.id,))
         await bot.send_message(
             message.chat.id,
             "Вы вышли в главное меню",
             reply_markup=ReplyKeyboardRemove(),
         )
     else:
-        competition_ids = [i[0] for i in db.query_data("SELECT id FROM competitions")]
+        competition_ids = [i[0] for i in db.query_data("select id from competitions")]
         try:
             test = int(message.text)
         except BaseException:
@@ -368,7 +374,7 @@ async def competition_seen(message):
             return
         competition_ids = [
             i[0]
-            for i in db.query_data("SELECT competition_id FROM registrations WHERE chat_id = ?", (message.chat.id,))
+            for i in db.query_data("select competition_id from registrations where chat_id = ?", (message.chat.id,))
         ]
         if int(message.text) not in competition_ids:
             await bot.send_message(message.chat.id, "Недействительный вариант ответа")
@@ -381,3 +387,63 @@ async def competition_seen(message):
 
 
 # Admin interactions
+
+
+async def new_competition(message):
+    db.query_data("update users set state = 'awaiting competition name' where chat_id = ?", (message.chat.id,))
+    db.query_data("insert into temporary_competitions(chat_id) values(?)", (message.chat.id,))
+    await bot.send_message(
+        message.chat.id,
+        "Для создания мероприятия вам потребуется указать название соревнования, дату, пол участинков (если требуется) и количество требуемых участников(если требуется).\nВ любой момент можно прервать создание соревнования, нажав 'Выйти', но весь прогресс будет утерян.",
+    )
+    await bot.send_message(message.chat.id, "Введите название соревнования:")
+
+
+async def ask_competition_name(message):
+    db.query_data("update users set state = 'awaiting competition name' where chat_id = ?", (message.chat.id,))
+    await bot.send_message(message.chat.id, "Введите название соревнования:")
+
+
+async def confirm_competition_name(message):
+    db.query_data("update temporary_competitions set name = ? where chat_id = ?", (message.text, message.chat.id))
+    inline_keyboard = InlineKeyboardMarkup()
+    inline_keyboard.add(InlineKeyboardButton("Да", callback_data="competition name confirmed"))
+    inline_keyboard.add(InlineKeyboardButton("Нет", callback_data="competition name rejected"))
+    bot.send_message(message.chat.id, f"Название соревнование - {message.text}, верно?", reply_markup=inline_keyboard)
+
+
+async def handle_competition_name_rejected(call):
+    await bot.send_message(call.chat.id, "Введите название соревнования заново:")
+
+
+async def handle_competition_name_confirmed(call):
+    db.query_data("update users set state = 'awaiting competition date' where chat_id = ?", (call.chat.id,))
+    await bot.send_message(call.chat.id, "Введите дату соревеновния в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+
+
+async def process_competition_date(message):
+    try:
+        dt = datetime.strptime(message.text, "%d-%m-%Y %H:%M")
+    except BaseException:
+        await bot.send_message(message.chat.id, "Неправильный формат даты, введите заново в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+        return
+
+    db.query_data("update temporary_competitions set date = ? where chat_id = ?", (dt, message.chat.id))
+    inline_keyboard = InlineKeyboardMarkup()
+    inline_keyboard.add(InlineKeyboardButton("Да", callback_data="competition date confirmed"))
+    inline_keyboard.add(InlineKeyboardButton("Нет", callback_data="competition date rejected"))
+    await bot.send_message(
+        message.chat.id, f"Дата соревнования - f{dt.strftime('%d-%m-%Y %H:%M')}?", reply_markup=inline_keyboard
+    )
+
+
+async def handle_competition_date_rejected(call):
+    await bot.send_message(call.chat.id, "Введите дату снова")
+
+
+async def handle_competition_date_confirmed(call):
+    inline_keyboard = InlineKeyboardMarkup(row_width=2)
+    inline_keyboard.add(InlineKeyboardButton("М", callback_data="competition female"))
+    inline_keyboard.add(InlineKeyboardButton("Ж", callback_data="competition male"))
+    inline_keyboard.add(InlineKeyboardButton("Нету разделения по полу", callback_data="competition no gender"))
+    await bot.send_message(call.chat.id, "Укажите пол:", reply_markup=inline_keyboard)
