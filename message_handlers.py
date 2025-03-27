@@ -46,8 +46,10 @@ async def message_handler(message):
         await competition_chosen(message)
     elif state == "seeing competitions":
         await competition_seen(message)
+    elif state == "awaiting competition name":
+        await process_competition_name(message)
     elif state == "awaiting competition date":
-        process_competition_date(message)
+        await process_competition_date(message)
     else:
         await help(message)
 
@@ -100,6 +102,10 @@ async def callback_query_handler(call):
             await handle_competition_name_confirmed(call)
         elif call.data == "competition name rejected":
             await handle_competition_name_rejected(call)
+        elif call.data == "competition date rejected":
+            await handle_competition_date_rejected(call)
+        elif call.data == "competition date confirmed":
+            await handle_competition_name_confirmed(call)
     finally:
         await bot.answer_callback_query(call.id)
 
@@ -202,7 +208,7 @@ async def handle_surname_rejection(call):
 
 async def handle_male(call):
     db.query_data(
-        "update users set gender = 'м', state = 'complete' where chat_id = ?",
+        "update users set gender = 'М', state = 'complete' where chat_id = ?",
         (call.from_user.id,),
     )
     await bot.send_message(
@@ -253,12 +259,15 @@ async def get_competitions(message):
         return
 
     user_gender = user_gender_result[0][0]  # Assuming the result is a list of tuples
+    print(user_gender)
 
     competitions = db.query_data(
         """select * from competitions where datetime(date) > datetime('now') 
         and gender = ?""",
         (user_gender,),
     )
+
+    print(competitions)
 
     if not competitions:
         await bot.send_message(message.chat.id, "No upcoming competitions found.")
@@ -404,21 +413,23 @@ async def ask_competition_name(message):
     await bot.send_message(message.chat.id, "Введите название соревнования:")
 
 
-async def confirm_competition_name(message):
+async def process_competition_name(message):
     db.query_data("update temporary_competitions set name = ? where chat_id = ?", (message.text, message.chat.id))
     inline_keyboard = InlineKeyboardMarkup()
     inline_keyboard.add(InlineKeyboardButton("Да", callback_data="competition name confirmed"))
     inline_keyboard.add(InlineKeyboardButton("Нет", callback_data="competition name rejected"))
-    bot.send_message(message.chat.id, f"Название соревнование - {message.text}, верно?", reply_markup=inline_keyboard)
+    await bot.send_message(
+        message.chat.id, f"Название соревнование - {message.text}, верно?", reply_markup=inline_keyboard
+    )
 
 
 async def handle_competition_name_rejected(call):
-    await bot.send_message(call.chat.id, "Введите название соревнования заново:")
+    await bot.send_message(call.message.chat.id, "Введите название соревнования заново:")
 
 
 async def handle_competition_name_confirmed(call):
-    db.query_data("update users set state = 'awaiting competition date' where chat_id = ?", (call.chat.id,))
-    await bot.send_message(call.chat.id, "Введите дату соревеновния в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+    db.query_data("update users set state = 'awaiting competition date' where chat_id = ?", (call.message.chat.id,))
+    await bot.send_message(call.message.chat.id, "Введите дату соревеновния в формате ДД-ММ-ГГГГ ЧЧ:ММ")
 
 
 async def process_competition_date(message):
@@ -433,12 +444,12 @@ async def process_competition_date(message):
     inline_keyboard.add(InlineKeyboardButton("Да", callback_data="competition date confirmed"))
     inline_keyboard.add(InlineKeyboardButton("Нет", callback_data="competition date rejected"))
     await bot.send_message(
-        message.chat.id, f"Дата соревнования - f{dt.strftime('%d-%m-%Y %H:%M')}?", reply_markup=inline_keyboard
+        message.chat.id, f"Дата соревнования - {dt.strftime('%d-%m-%Y %H:%M')}?", reply_markup=inline_keyboard
     )
 
 
 async def handle_competition_date_rejected(call):
-    await bot.send_message(call.chat.id, "Введите дату снова")
+    await bot.send_message(call.message.chat.id, "Введите дату снова")
 
 
 async def handle_competition_date_confirmed(call):
@@ -446,4 +457,4 @@ async def handle_competition_date_confirmed(call):
     inline_keyboard.add(InlineKeyboardButton("М", callback_data="competition female"))
     inline_keyboard.add(InlineKeyboardButton("Ж", callback_data="competition male"))
     inline_keyboard.add(InlineKeyboardButton("Нету разделения по полу", callback_data="competition no gender"))
-    await bot.send_message(call.chat.id, "Укажите пол:", reply_markup=inline_keyboard)
+    await bot.send_message(call.message.chat.id, "Укажите пол:", reply_markup=inline_keyboard)
