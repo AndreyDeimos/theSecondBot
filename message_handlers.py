@@ -82,6 +82,32 @@ async def callback_query_handler(call):
     """Handle inline keyboard interactions"""
     try:
         chat_id = call.from_user.id
+        current_state = get_user_state(chat_id)
+        
+        valid_states = {
+            "name confirmed": ["confirm_name"],
+            "name rejected": ["confirm_name"],
+            "surname confirmed": ["confirm_surname"],
+            "surname rejected": ["confirm_surname"],
+            "male": ["gender"],
+            "female": ["gender"],
+            "competition name confirmed": ["awaiting competition name"],
+            "competition name rejected": ["awaiting competition name"],
+            "competition date confirmed": ["awaiting competition date"],
+            "competition date rejected": ["awaiting competition date"],
+            "competition female": ["awaiting competition gender"],
+            "competition male": ["awaiting competition gender"],
+            "competition no gender": ["awaiting competition gender"]
+        }
+        
+        if call.data in valid_states and current_state not in valid_states[call.data]:
+            await bot.answer_callback_query(
+                call.id, 
+                "Эта кнопка больше не активна. Пожалуйста, начните процесс заново.",
+                show_alert=True
+            )
+            return
+            
         if call.data == "name confirmed":
             db.query_data("update users set state = 'surname' where chat_id = ?", (chat_id,))
             await ask_surname(call)
