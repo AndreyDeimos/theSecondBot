@@ -83,7 +83,7 @@ async def callback_query_handler(call):
     try:
         chat_id = call.from_user.id
         current_state = get_user_state(chat_id)
-        
+
         valid_states = {
             "name confirmed": ["confirm_name"],
             "name rejected": ["confirm_name"],
@@ -97,17 +97,15 @@ async def callback_query_handler(call):
             "competition date rejected": ["awaiting competition date"],
             "competition female": ["awaiting competition gender"],
             "competition male": ["awaiting competition gender"],
-            "competition no gender": ["awaiting competition gender"]
+            "competition no gender": ["awaiting competition gender"],
         }
-        
+
         if call.data in valid_states and current_state not in valid_states[call.data]:
             await bot.answer_callback_query(
-                call.id, 
-                "Эта кнопка больше не активна. Пожалуйста, начните процесс заново.",
-                show_alert=True
+                call.id, "Эта кнопка больше не активна. Пожалуйста, начните процесс заново.", show_alert=True
             )
             return
-            
+
         if call.data == "name confirmed":
             db.query_data("update users set state = 'surname' where chat_id = ?", (chat_id,))
             await ask_surname(call)
@@ -425,6 +423,8 @@ async def competition_seen(message):
 
 
 async def new_competition(message):
+    if db.query_data("select role from users where chat_id = ?", (message.chat.id,))[0][0] != "admin":
+        bot.send_message(message.chat.id, "У вас нет такой опции.")
     db.query_data("update users set state = 'awaiting competition name' where chat_id = ?", (message.chat.id,))
     db.query_data("insert into temporary_competitions(chat_id) values(?)", (message.chat.id,))
     await bot.send_message(
